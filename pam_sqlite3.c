@@ -36,8 +36,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
  */
 
-/* $Id: pam_sqlite.c,v 1.11 2003/07/17 13:47:07 wez Exp $ */
-
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,17 +43,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <string.h>
 #include <syslog.h>
 #include <ctype.h>
-#if HAVE_UNISTD_H
-#include <unistd.h>
-#endif
 #if HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 #include <time.h>
 #include <sqlite3.h>
-#if HAVE_CRYPT_H
-#include <crypt.h>
-#endif
+
+#include "crypt.h"
 
 #define PAM_SM_AUTH
 #define PAM_SM_ACCOUNT
@@ -82,9 +76,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 typedef enum {
 	PW_CLEAR = 1,
-#if HAVE_MD5_CRYPT
-	PW_MD5,
-#endif
 	PW_CRYPT,
 } pw_scheme;
 
@@ -246,11 +237,6 @@ set_module_option(const char *option, struct module_options *options)
 		if(!strcmp(val, "crypt")) {
 			options->pw_type = PW_CRYPT;
 		}
-#if HAVE_MD5_CRYPT
-		else if(!strcmp(val, "md5")) {
-			options->pw_type = PW_MD5;
-		}
-#endif
 	} else if(!strcmp(buf, "debug")) {
 		options->debug = 1;
 	} else if (!strcmp(buf, "config_file")) {
@@ -388,7 +374,9 @@ crypt_make_salt(struct module_options *options)
 		
 
 	time(&now);
+#ifndef __APPLE__
 	x += now + getpid() + clock();
+#endif
 	srandom(x);
 
 	switch(options->pw_type) {
@@ -397,18 +385,6 @@ crypt_make_salt(struct module_options *options)
 		result[1] = salt_chars[random() % 64];
 		result[2] = '\0';
 		break;
-#if HAVE_MD5_CRYPT
-	case PW_MD5:
-		result[0]='$';
-		result[1]='1';
-		result[2]='$';
-		for (i=3; i<11; i++) {
-			result[i] = salt_chars[random() % 64];
-		}
-		result[11] = '$';
-		result[12]='\0';
-		break;
-#endif
 	default:
 		result[0] = '\0';
 	}
@@ -423,9 +399,6 @@ encrypt_password(struct module_options *options, const char *pass)
 	char *s = NULL;
 
 	switch(options->pw_type) {
-#if HAVE_MD5_CRYPT
-		case PW_MD5:
-#endif
 		case PW_CRYPT:
 			s = strdup(crypt(pass, crypt_make_salt(options)));
 			break;
@@ -483,9 +456,6 @@ auth_verify_password(const char *user, const char *passwd,
 			if(strcmp(passwd, stored_pw) == 0)
 				rc = PAM_SUCCESS;
 			break;
-#if HAVE_MD5_CRYPT
-		case PW_MD5: 
-#endif
 		case PW_CRYPT:
 			if(strcmp(crypt(passwd, stored_pw), stored_pw) == 0)
 				rc = PAM_SUCCESS;
